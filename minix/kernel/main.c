@@ -1,5 +1,6 @@
 /* This file contains the main program of MINIX as well as its shutdown code.
- * The routine main() initializes the system and starts the ball rolling by
+ * The routine main() initializes the system and starts the ball 
+rolling by
  * setting up the process table, interrupt vectors, and scheduling each task 
  * to run to initialize itself.
  * The routine shutdown() does the opposite and brings down MINIX. 
@@ -343,6 +344,10 @@ static void announce(void)
       "Copyright 2016, Vrije Universiteit, Amsterdam, The Netherlands\n",
       OS_RELEASE);
   printf("MINIX is open source software, see http://www.minix3.org\n");
+  printf("========================================\n");
+  printf("| Minix 3.4.0rc6 - SO - UNIFESP 1s2025 |\n");
+  printf("|    Projeto Pratico (N) - Equipe 11   |\n");
+  printf("========================================\n");
 }
 
 /*===========================================================================*
@@ -358,6 +363,10 @@ void prepare_shutdown(const int how)
    * argument passes the shutdown status. 
    */
   printf("MINIX will now be shut down ...\n");
+  printf("=======================================\n");
+  printf("| ATE A PROXIMA - SO - UNIFESP 1s2025 |\n");
+  printf("|   Projeto Pratico (N) - Equipe 11   |\n");
+  printf("=======================================\n");
   set_kernel_timer(&shutdown_timer, get_monotonic() + system_hz,
       minix_shutdown, how);
 }
