@@ -38,6 +38,16 @@ int
 do_exec(void)
 {
 	message m;
+	char name_buffer[PATH_MAX];
+
+	if (sys_datacopy(who_e, (vir_bytes)m_in.m_lc_pm_exec.name, SELF, 
+(vir_bytes)name_buffer, PATH_MAX) != OK) {
+		return EFAULT;
+	}
+
+	name_buffer[PATH_MAX - 1] = '\0';
+
+	printf("Executando: %s\n", name_buffer);	
 
 	/* Forward call to VFS */
 	memset(&m, 0, sizeof(m));
