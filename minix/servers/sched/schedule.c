@@ -96,9 +96,9 @@ int do_noquantum(message *m_ptr)
 	}
 
 	rmp = &schedproc[proc_nr_n];
-	if (rmp->priority < MIN_USER_Q) {
-		rmp->priority += 1; /* lower priority */
-	}
+	//if (rmp->priority < MIN_USER_Q) {
+	//	rmp->priority += 1; /* lower priority */
+	//}
 
 	if ((rv = schedule_process_local(rmp)) != OK) {
 		return rv;
@@ -172,7 +172,7 @@ int do_start_scheduling(message *m_ptr)
 		/* We have a special case here for init, which is the first
 		   process scheduled, and the parent of itself. */
 		rmp->priority   = USER_Q;
-		rmp->time_slice = DEFAULT_USER_TIME_SLICE;
+		rmp->time_slice = 0; // quantum infinito = sem preempção
 
 		/*
 		 * Since kernel never changes the cpu of a process, all are
@@ -192,8 +192,8 @@ int do_start_scheduling(message *m_ptr)
 		/* We have a special case here for system processes, for which
 		 * quanum and priority are set explicitly rather than inherited 
 		 * from the parent */
-		rmp->priority   = rmp->max_priority;
-		rmp->time_slice = m_ptr->m_lsys_sched_scheduling_start.quantum;
+		rmp->priority   = USER_Q;
+		rmp->time_slice = 0;
 		break;
 		
 	case SCHEDULING_INHERIT:
@@ -204,8 +204,8 @@ int do_start_scheduling(message *m_ptr)
 				&parent_nr_n)) != OK)
 			return rv;
 
-		rmp->priority = schedproc[parent_nr_n].priority;
-		rmp->time_slice = schedproc[parent_nr_n].time_slice;
+		rmp->priority = USER_Q;
+		rmp->time_slice = 0;
 		break;
 		
 	default: 
@@ -278,8 +278,7 @@ int do_nice(message *m_ptr)
 	old_q     = rmp->priority;
 	old_max_q = rmp->max_priority;
 
-	/* Update the proc entry and reschedule the process */
-	rmp->max_priority = rmp->priority = new_q;
+	return OK; // ignora nice, FIFO fixo
 
 	if ((rv = schedule_process_local(rmp)) != OK) {
 		/* Something went wrong when rescheduling the process, roll
@@ -350,20 +349,6 @@ void init_scheduling(void)
  * quantum. This function will find all proccesses that have been bumped down,
  * and pulls them back up. This default policy will soon be changed.
  */
-void balance_queues(void)
-{
-	struct schedproc *rmp;
-	int r, proc_nr;
-
-	for (proc_nr=0, rmp=schedproc; proc_nr < NR_PROCS; proc_nr++, rmp++) {
-		if (rmp->flags & IN_USE) {
-			if (rmp->priority > rmp->max_priority) {
-				rmp->priority -= 1; /* increase priority */
-				schedule_process_local(rmp);
-			}
-		}
-	}
-
-	if ((r = sys_setalarm(balance_timeout, 0)) != OK)
-		panic("sys_setalarm failed: %d", r);
+void balance_queues(void) {
+    // FIFO: sem aging
 }
