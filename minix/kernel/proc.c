@@ -1604,7 +1604,7 @@ void enqueue(
  * This function can be used x-cpu as it always uses the queues of the cpu the
  * process is assigned to.
  */
-  int q = rp->p_priority;	 		/* scheduling queue to use */
+  int q = USER_Q;  // Força todos a entrarem na mesma fila (FIFO)
   struct proc **rdy_head, **rdy_tail;
   
   assert(proc_is_runnable(rp));
