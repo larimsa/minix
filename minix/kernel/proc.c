@@ -40,6 +40,7 @@
 #include "arch_proto.h"
 
 #include <minix/syslib.h>
+#include <minix/com.h>
 
 /* Scheduling and message passing functions */
 static void idle(void);
