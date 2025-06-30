@@ -16,7 +16,7 @@
 static unsigned balance_timeout;
 
 #define BALANCE_TIMEOUT	5 /* how often to balance queues in seconds */
-#define RR_QUANTUM 50 /* mudanca feita para quantum do round robin  */
+#define RR_QUANTUM 100 /* mudanca feita para quantum do round robin  */
 static int schedule_process(struct schedproc * rmp, unsigned flags);
 
 #define SCHEDULE_CHANGE_PRIO	0x1
