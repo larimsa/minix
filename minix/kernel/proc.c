@@ -1798,89 +1798,89 @@ int rand_c(void)
  *===========================================================================*/
 static struct proc * pick_proc(void)
 {
-/* Decide who to run now.  A new process is selected and returned.
- * When a billable process is selected, record it in 'bill_ptr', so that the 
- * clock task can tell who to bill for system time.
- *
- * This function always uses the run queues of the local cpu!
- */
-  // Quantidade de processos prontos em cada fila
-int processes_ready[7] = { 0 };
-int tickets_in_every_queue[7] = { 0 };
+    int processes_ready[7] = { 0 };
+    int tickets_in_every_queue[7] = { 0 };
+    int tickets = 0;
+    int chosen_ticket, acc_sum = 0, min_ticket_queue = 7;
+    int ticket;
 
-// Quantidade total de tiquetes distribuídos
-int tickets = 0;
+    register struct proc *rp;
+    struct proc **rdy_head;
+    int q;
 
-// Tiquete escolhido (sorte grande)
-int chosen_ticket, acc_sum = 0, min_ticket_queue = 7;
+    // Parte 1: escalona normalmente processos de sistema
+    rdy_head = get_cpulocal_var(run_q_head);
+    for (q = 0; q < NR_SCHED_QUEUES; q++) {
+        if (q == 7) {
+            q += 8; // pular usuário
+        }
 
-// Usado durante cálculo do menor tiquete
-int ticket;
-
-register struct proc *rp;      /* process to run */
-struct proc **rdy_head;
-int q;                         /* iterate over queues */
-
-rdy_head = get_cpulocal_var(run_q_head);
-for (q = 0; q < NR_SCHED_QUEUES; q++) {
-    if (q == 7) {
-        // Pular todo o espaço de usuário
-        // Usar round-robin padrão apenas para processos de sistema e processos em IDLE
-        q += 8;
+        if (!(rp = rdy_head[q])) continue;
+        assert(proc_is_runnable(rp));
+        if (priv(rp)->s_flags & BILLABLE)
+            get_cpulocal_var(bill_ptr) = rp;
+        return rp;
     }
 
-    if(!(rp = rdy_head[q])) {
-        TRACE(VF_PICKPROC, printf("cpu %d queue %d empty\n", cpuid, q););
-        continue;
-    }
-
-    assert(proc_is_runnable(rp));
-    if (priv(rp)->s_flags & BILLABLE)
-        get_cpulocal_var(bill_ptr) = rp; /* bill for system time */
-    return rp;
-}
-
-// Fazer distribuição de pesos
-
-// Checando quantidade de processos executáveis em cada lista
-for (int i = 0; i <= NR_TASKS + NR_PROCS; i++) {
-    register struct proc * process = &proc[i];
-    if (process->p_priority <= 14 && process->p_priority >= 7) {
-        const int priority_queue = process->p_priority;
-        // Processo é de usuário!
-        if (proc_is_runnable(process)) {
-            processes_ready[7 - priority_queue]++;
+    // Parte 2: contar processos executáveis nas filas de usuário (7 a 14)
+    for (int i = 0; i <= NR_TASKS + NR_PROCS; i++) {
+        register struct proc *p = &proc[i];
+        if (p->p_priority >= 7 && p->p_priority <= 14 && proc_is_runnable(p)) {
+            processes_ready[7 - p->p_priority]++;
         }
     }
-}
 
-// Soma dos tíquetes distribuídos
-for (q = 7; q < 15; q++) {
-    ticket = (16 - q) * processes_ready[7 - q];
-    tickets_in_every_queue[7 - q] = ticket;
-    tickets += ticket;
-}
-
-chosen_ticket = rand_c() % tickets + 1;
-
-for (q = 7; q < 15; q++) {
-    ticket = tickets_in_every_queue[7 - q];
-    acc_sum += ticket;
-    if (chosen_ticket <= acc_sum) {
-        min_ticket_queue = q; // fila sorteada
-        break;
+    // Parte 3: calcular tíquetes para cada fila com base na prioridade
+    for (q = 7; q < 15; q++) {
+        ticket = (16 - q) * processes_ready[7 - q];
+        tickets_in_every_queue[7 - q] = ticket;
+        tickets += ticket;
     }
-}
 
-if ((rp = rdy_head[min_ticket_queue]) && proc_is_runnable(rp)) {
-    if (priv(rp)->s_flags & BILLABLE) {
-        get_cpulocal_var(bill_ptr) = rp;
+    // Se ninguém está pronto, desiste
+    if (tickets == 0) return NULL;
+
+    // Parte 4: sorteia um tíquete
+    chosen_ticket = rand_c() % tickets + 1;
+
+    // Parte 5: encontra a fila vencedora
+    for (q = 7; q < 15; q++) {
+        ticket = tickets_in_every_queue[7 - q];
+        acc_sum += ticket;
+        if (chosen_ticket <= acc_sum) {
+            min_ticket_queue = q;
+            break;
+        }
     }
-    return rp;
-}
 
-return NULL;
+    // Parte 6: tenta pegar processo da fila sorteada
+    if ((rp = rdy_head[min_ticket_queue]) && proc_is_runnable(rp)) {
+        if (priv(rp)->s_flags & BILLABLE)
+            get_cpulocal_var(bill_ptr) = rp;
+        return rp;
+    }
 
+    // Parte 7: fallback – procura próxima fila com processo pronto
+    for (q = 7; q < 15; q++) {
+        if ((rp = rdy_head[q]) && proc_is_runnable(rp)) {
+            if (priv(rp)->s_flags & BILLABLE)
+                get_cpulocal_var(bill_ptr) = rp;
+            return rp;
+        }
+    }
+
+    // Parte 8: último fallback – qualquer outra fila do sistema
+    rdy_head = get_cpulocal_var(run_q_head);
+    for (q = 0; q < NR_SCHED_QUEUES; q++) {
+        if (q == 7) q += 8;
+        if ((rp = rdy_head[q]) && proc_is_runnable(rp)) {
+            if (priv(rp)->s_flags & BILLABLE)
+                get_cpulocal_var(bill_ptr) = rp;
+            return rp;
+        }
+    }
+
+    return NULL;
 }
 
 /*===========================================================================*
