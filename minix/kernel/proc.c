@@ -1844,7 +1844,7 @@ for (q = 0; q < NR_SCHED_QUEUES; q++) {
 
 // Checando quantidade de processos executáveis em cada lista
 for (int i = 0; i <= NR_TASKS + NR_PROCS; i++) {
-    register struct proc * process = proc[i];
+    register struct proc * process = &proc[i];
     if (process->p_priority <= 14 && process->p_priority >= 7) {
         const int priority_queue = process->p_priority;
         // Processo é de usuário!
