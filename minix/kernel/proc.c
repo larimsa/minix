@@ -1790,7 +1790,7 @@ void dequeue(struct proc *rp)
 
 int rand_c(void)
 {
-	return (int)((next = nest * 1103515245 +12345) % ((u_long)RAND_MAX + 1));
+	return (int)((next = next * 1103515245 +12345) % ((u_long)RAND_MAX + 1));
 }
 
 /*===========================================================================*
@@ -1844,7 +1844,7 @@ for (q = 0; q < NR_SCHED_QUEUES; q++) {
 
 // Checando quantidade de processos executáveis em cada lista
 for (int i = 0; i <= NR_TASKS + NR_PROCS; i++) {
-    register struct proc *process = proc[i];
+    register struct proc * process = proc[i];
     if (process->p_priority <= 14 && process->p_priority >= 7) {
         const int priority_queue = process->p_priority;
         // Processo é de usuário!
@@ -1861,7 +1861,7 @@ for (q = 7; q < 15; q++) {
     tickets += ticket;
 }
 
-chosen_ticket = rand_c(tickets);
+chosen_ticket = rand_c() % tickets + 1;
 
 for (q = 7; q < 15; q++) {
     ticket = tickets_in_every_queue[7 - q];
