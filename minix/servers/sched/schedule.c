@@ -104,26 +104,28 @@ static void pick_cpu(struct schedproc * proc)
  *				do_noquantum				     *
  *===========================================================================*/
 
-int do_noquantum(message *m_ptr)
-{
-	register struct schedproc *rmp;
-	int rv, proc_nr_n;
+int do_noquantum(message *m_ptr) {
+    register struct schedproc *rmp;
+    int rv, proc_nr_n;
 
-	if (sched_isokendpt(m_ptr->m_source, &proc_nr_n) != OK) {
-		printf("SCHED: WARNING: got an invalid endpoint in OOQ msg %u.\n",
-		m_ptr->m_source);
-		return EBADEPT;
-	}
+    /* Código original de validação */
+    if (sched_isokendpt(m_ptr->m_source, &proc_nr_n) != OK) {
+        printf("SCHED: Invalid endpoint %u\n", m_ptr->m_source);
+        return EBADEPT;
+    }
 
-	rmp = &schedproc[proc_nr_n];
-	if (rmp->priority < MIN_USER_Q) {
-		rmp->priority += 1; /* lower priority */
-	}
+    rmp = &schedproc[proc_nr_n];
 
-	if ((rv = schedule_process_local(rmp)) != OK) {
-		return rv;
-	}
-	return OK;
+    /* Atualiza estimativa SJF */
+    rmp->time_slice = calculate_sjf_runtime(rmp);
+
+    /* Comportamento original de aging */
+    if (rmp->priority < MIN_USER_Q) rmp->priority += 1;
+
+    if ((rv = schedule_process(rmp, SCHEDULE_CHANGE_PRIO | SCHEDULE_CHANGE_QUANTUM)) != OK) {
+        return rv;
+    }
+    return OK;
 }
 
 /*===========================================================================*
