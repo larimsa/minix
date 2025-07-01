@@ -1978,3 +1978,13 @@ void ser_dump_proc(void)
                 print_proc_recursive(pp);
         }
 }
+
+/* Armazena estimativa no campo p_priority */
+void update_sjf_estimate(struct proc *p, unsigned int time) {
+    p->p_priority = time;
+}
+
+/* Recupera estimativa */
+unsigned int get_sjf_estimate(struct proc *p) {
+    return p->p_priority;
+}
