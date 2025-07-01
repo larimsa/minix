@@ -13,6 +13,26 @@
 #include <minix/com.h>
 #include <machine/archtypes.h>
 
+/* ========== IMPLEMENTAÇÃO SJF ========== */
+static unsigned int calculate_sjf_runtime(struct schedproc *rmp) {
+    /* Fórmula: Tempo de CPU + (Prioridade Máxima × 2) */
+    return rmp->cpu_time + (rmp->max_priority * 2);
+}
+
+static struct schedproc* select_shortest_job(void) {
+    struct schedproc *rmp, *shortest = NULL;
+    unsigned int min_time = UINT_MAX;
+
+    for (rmp = schedproc; rmp < &schedproc[NR_PROCS]; rmp++) {
+        if ((rmp->flags & IN_USE) && (rmp->time_slice < min_time)) {
+            min_time = rmp->time_slice;
+            shortest = rmp;
+        }
+    }
+    return shortest;
+}
+/* ========== FIM DA IMPLEMENTAÇÃO ========== */
+
 static unsigned balance_timeout;
 
 #define BALANCE_TIMEOUT	5 /* how often to balance queues in seconds */
