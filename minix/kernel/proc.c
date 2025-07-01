@@ -41,6 +41,9 @@
 
 #include <minix/syslib.h>
 
+#define SJF_ALPHA 50  /* Fator alpha para estimativa (0-100) */
+#define DEFAULT_BURST_TIME 100  /* Burst time padrão para novos processos */
+
 /* Scheduling and message passing functions */
 static void idle(void);
 /**
