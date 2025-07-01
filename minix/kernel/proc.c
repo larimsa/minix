@@ -1,4 +1,7 @@
-/* This file contains essentially all of the process and message handling.
+/* IMPLEMENTAÇÃO DO LOTTERY SCHEDULING PARA MINIX 3.4.0rc6.
+ * ALTERAÇÃO DE pick_proc() e CRIAÇÃO DE sched_random
+ *
+ * This file contains essentially all of the process and message handling.
  * Together with "mpx.s" it forms the lowest layer of the MINIX kernel.
  * There is one entry point from the outside:
  *
@@ -1785,11 +1788,14 @@ void dequeue(struct proc *rp)
 }
 
 /*===========================================================================*
- *				rand_c				     * 
+ *				sched_random				     * 
  *===========================================================================*/
 
-int rand_c(void)
+int sched_random(void)
 {
+/* Gera um número aleatório usando um algoritmo (LCG).
+ * Não é usado rand() da stdlib porque não está disponível no MINIX 3.4.0rc6.
+ */
 	return (int)((next = next * 1103515245 +12345) % ((u_long)RAND_MAX + 1));
 }
 
@@ -1798,69 +1804,97 @@ int rand_c(void)
  *===========================================================================*/
 static struct proc * pick_proc(void)
 {
+/* Implementação Lottery Scheduling para processos de usuário (filas 7 a 14)
+ * combinando escalonamento tradicional de processos do sistema com um sorteio proporcional.
+ * Quanto maior a prioridade (menor o valor da fila), mais bilhetes o processo recebe,
+ * aumentando a chance de ser escolhido.
+ */
+
+// Vetor que armazena a quantidade de processos prontos em cada fila de usuário (7 a 14)
     int processes_ready[7] = { 0 };
+
+// Vetor que armazena o total de tíquetes atribuídos a cada fila (baseado na prioridade)	
     int tickets_in_every_queue[7] = { 0 };
-    int tickets = 0;
-    int chosen_ticket, acc_sum = 0, min_ticket_queue = 7;
-    int ticket;
+	
+    int tickets = 0;               // Soma total de tíquetes atribuídos
+    int chosen_ticket;             // Número sorteado entre os tíquetes
+    int acc_sum = 0;               // Acumulador para localizar a fila vencedora
+    int min_ticket_queue = 7;      // Fila com o tíquete vencedor
+    int ticket;                    // Número de tíquetes por fila (temporário)
 
-    register struct proc *rp;
-    struct proc **rdy_head;
-    int q;
+    register struct proc *rp;      // Ponteiro para processo pronto
+    struct proc **rdy_head;	   // Ponteiro para as filas de processos prontos
+    int q;			   // Índice de prioridade na fila
 
-    // Parte 1: escalona normalmente processos de sistema
+/*===========================================================================*
+ *  Parte 1: Escalonamento tradicional de processos do sistema (filas 0 a 6) * 
+ *===========================================================================*/
     rdy_head = get_cpulocal_var(run_q_head);
     for (q = 0; q < NR_SCHED_QUEUES; q++) {
         if (q == 7) {
-            q += 8; // pular usuário
+            q += 8; // Pula as filas de usuário
         }
 
-        if (!(rp = rdy_head[q])) continue;
-        assert(proc_is_runnable(rp));
+        if (!(rp = rdy_head[q])) continue; 	// Continua se a fila estiver vazia
+        assert(proc_is_runnable(rp));	  	// Garante que o processo é executável
         if (priv(rp)->s_flags & BILLABLE)
             get_cpulocal_var(bill_ptr) = rp;
-        return rp;
+        return rp; 				// Escalonamento tradicional que retorna o 1º processo do pronto
     }
 
-    // Parte 2: contar processos executáveis nas filas de usuário (7 a 14)
+/*===========================================================================*
+ *  Parte 2: Contabiliza processos executáveis nas filas de usuário (7 a 14) * 
+ *===========================================================================*/
+
     for (int i = 0; i <= NR_TASKS + NR_PROCS; i++) {
         register struct proc *p = &proc[i];
         if (p->p_priority >= 7 && p->p_priority <= 14 && proc_is_runnable(p)) {
-            processes_ready[7 - p->p_priority]++;
+            processes_ready[7 - p->p_priority]++; // Mapeia a fila para índice 0 a 7
         }
     }
 
-    // Parte 3: calcular tíquetes para cada fila com base na prioridade
+/*===========================================================================*
+ * 	 Parte 3: Calcula quantidade de bilhetes para cada fila de usuário   * 
+ *  		Prioridades mais altas recebem mais tíquetes (16 - q) 	     * 
+ *===========================================================================*/
     for (q = 7; q < 15; q++) {
         ticket = (16 - q) * processes_ready[7 - q];
-        tickets_in_every_queue[7 - q] = ticket;
-        tickets += ticket;
+        tickets_in_every_queue[7 - q] = ticket; // Armazena no índice correspondente
+        tickets += ticket;			// Soma total de bilhetes
     }
 
-    // Se ninguém está pronto, desiste
+    // Se não há nenhum processo pronto, retorna nulo
     if (tickets == 0) return NULL;
 
-    // Parte 4: sorteia um tíquete
-    chosen_ticket = rand_c() % tickets + 1;
+/*===========================================================================*
+ *  	     Parte 4: Sorteia um número entre 1 e o total de bilhetes        * 
+ *===========================================================================*/
+    chosen_ticket = sched_random() % tickets + 1;
 
-    // Parte 5: encontra a fila vencedora
+/*===========================================================================*
+ *  	  Parte 5: Identifica a fila vencedora de acordo com o sorteio       * 
+ *===========================================================================*/
     for (q = 7; q < 15; q++) {
         ticket = tickets_in_every_queue[7 - q];
         acc_sum += ticket;
         if (chosen_ticket <= acc_sum) {
-            min_ticket_queue = q;
+            min_ticket_queue = q; // Armazena a fila correspondente ao tíquete
             break;
         }
     }
 
-    // Parte 6: tenta pegar processo da fila sorteada
+/*===========================================================================*
+ *    Parte 6: Tenta retornar o primeiro processo pronto da fila sorteada    * 
+ *===========================================================================*/
     if ((rp = rdy_head[min_ticket_queue]) && proc_is_runnable(rp)) {
         if (priv(rp)->s_flags & BILLABLE)
             get_cpulocal_var(bill_ptr) = rp;
         return rp;
     }
 
-    // Parte 7: fallback – procura próxima fila com processo pronto
+/*=============================================================================*
+ * Parte 7: Fallback – percorre todas as filas de usuário buscando um processo * 
+ *=============================================================================*/
     for (q = 7; q < 15; q++) {
         if ((rp = rdy_head[q]) && proc_is_runnable(rp)) {
             if (priv(rp)->s_flags & BILLABLE)
@@ -1869,7 +1903,9 @@ static struct proc * pick_proc(void)
         }
     }
 
-    // Parte 8: último fallback – qualquer outra fila do sistema
+/*=============================================================================*
+ *    Parte 8: Último fallback – revarre todas as filas, exceto as de usuário  * 
+ *=============================================================================*/
     rdy_head = get_cpulocal_var(run_q_head);
     for (q = 0; q < NR_SCHED_QUEUES; q++) {
         if (q == 7) q += 8;
@@ -1880,6 +1916,7 @@ static struct proc * pick_proc(void)
         }
     }
 
+// Nenhum processo selecionado
     return NULL;
 }
 
