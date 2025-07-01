@@ -43,6 +43,26 @@ static int schedule_process(struct schedproc * rmp, unsigned flags);
 /* processes created by RS are sysytem processes */
 #define is_system_proc(p)	((p)->parent == RS_PROC_NR)
 
+/* Função para estimar tempo restante */
+static unsigned int sjf_estimate(struct schedproc *rmp) {
+    /* Fórmula: Tempo de CPU usado + (Prioridade Máxima * Peso) */
+    return rmp->cpu_time + (rmp->max_priority * 2); 
+}
+
+/* Seleciona o processo com menor tempo estimado */
+static struct schedproc* sjf_select(void) {
+    struct schedproc *rmp, *next = NULL;
+    unsigned int shortest = UINT_MAX;
+
+    for (rmp = schedproc; rmp < &schedproc[NR_PROCS]; rmp++) {
+        if ((rmp->flags & IN_USE) && (rmp->time_slice < shortest)) {
+            shortest = rmp->time_slice;
+            next = rmp;
+        }
+    }
+    return next;
+}
+
 static unsigned cpu_proc[CONFIG_MAX_CPUS];
 
 static void pick_cpu(struct schedproc * proc)
@@ -84,26 +104,32 @@ static void pick_cpu(struct schedproc * proc)
  *				do_noquantum				     *
  *===========================================================================*/
 
-int do_noquantum(message *m_ptr)
-{
-	register struct schedproc *rmp;
-	int rv, proc_nr_n;
+int do_noquantum(message *m_ptr) {
+    register struct schedproc *rmp;
+    int rv, proc_nr_n;
 
-	if (sched_isokendpt(m_ptr->m_source, &proc_nr_n) != OK) {
-		printf("SCHED: WARNING: got an invalid endpoint in OOQ msg %u.\n",
-		m_ptr->m_source);
-		return EBADEPT;
-	}
+    /* Validação original do endpoint */
+    if (sched_isokendpt(m_ptr->m_source, &proc_nr_n) != OK) {
+        printf("SCHED: WARNING: invalid endpoint in OOQ msg %u.\n", 
+              m_ptr->m_source);
+        return EBADEPT;
+    }
 
-	rmp = &schedproc[proc_nr_n];
-	if (rmp->priority < MIN_USER_Q) {
-		rmp->priority += 1; /* lower priority */
-	}
+    rmp = &schedproc[proc_nr_n];
 
-	if ((rv = schedule_process_local(rmp)) != OK) {
-		return rv;
-	}
-	return OK;
+    /* --- NOSSA MODIFICAÇÃO: Atualiza estimativa SJF --- */
+    rmp->time_slice = sjf_estimate(rmp); 
+
+    /* Comportamento original (aging de prioridade) */
+    if (rmp->priority < MIN_USER_Q) {
+        rmp->priority += 1;
+    }
+
+    /* Chama o escalonador */
+    if ((rv = schedule_process(rmp, SCHEDULE_CHANGE_PRIO | SCHEDULE_CHANGE_QUANTUM)) != OK) {
+        return rv;
+    }
+    return OK;
 }
 
 /*===========================================================================*
@@ -296,35 +322,46 @@ int do_nice(message *m_ptr)
  *===========================================================================*/
 static int schedule_process(struct schedproc * rmp, unsigned flags)
 {
-	int err;
-	int new_prio, new_quantum, new_cpu, niced;
+    /* --- MODIFICAÇÃO SJF OTIMIZADA --- */
+    struct schedproc *selected = rmp;
+    if ((flags == (SCHEDULE_CHANGE_PRIO | SCHEDULE_CHANGE_QUANTUM))) {
+        struct schedproc *next = sjf_select();
+        if (next != NULL) {
+            selected = next;
+            /* Restaura quantum padrão para o processo selecionado */
+            selected->time_slice = DEFAULT_USER_TIME_SLICE;
+        }
+    }
+    /* --- FIM DA MODIFICAÇÃO --- */
 
-	pick_cpu(rmp);
+    int err;
+    int new_prio, new_quantum, new_cpu, niced;
 
-	if (flags & SCHEDULE_CHANGE_PRIO)
-		new_prio = rmp->priority;
-	else
-		new_prio = -1;
+    pick_cpu(selected);  /* Usa 'selected' em vez de 'rmp' */
 
-	if (flags & SCHEDULE_CHANGE_QUANTUM)
-		new_quantum = rmp->time_slice;
-	else
-		new_quantum = -1;
+    if (flags & SCHEDULE_CHANGE_PRIO)
+        new_prio = selected->priority;
+    else
+        new_prio = -1;
 
-	if (flags & SCHEDULE_CHANGE_CPU)
-		new_cpu = rmp->cpu;
-	else
-		new_cpu = -1;
+    if (flags & SCHEDULE_CHANGE_QUANTUM)
+        new_quantum = selected->time_slice;
+    else
+        new_quantum = -1;
 
-	niced = (rmp->max_priority > USER_Q);
+    if (flags & SCHEDULE_CHANGE_CPU)
+        new_cpu = selected->cpu;
+    else
+        new_cpu = -1;
 
-	if ((err = sys_schedule(rmp->endpoint, new_prio,
-		new_quantum, new_cpu, niced)) != OK) {
-		printf("PM: An error occurred when trying to schedule %d: %d\n",
-		rmp->endpoint, err);
-	}
+    niced = (selected->max_priority > USER_Q);
 
-	return err;
+    if ((err = sys_schedule(selected->endpoint, new_prio,
+        new_quantum, new_cpu, niced)) != OK) {
+        printf("PM: Error scheduling %d: %d\n", selected->endpoint, err);
+    }
+
+    return err;
 }
 
 
