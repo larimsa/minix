@@ -116,6 +116,17 @@ static void set_idle_name(char * name, int n)
 
 static message m_notify_buff = { 0, NOTIFY_MESSAGE };
 
+/* Função para armazenar a estimativa de tempo */
+void store_estimated_runtime(struct proc *p, unsigned int time) {
+    /* p_priority para armazenar o tempo estimado */
+    p->p_priority = time;
+}
+
+/* Função para recuperar a estimativa */
+unsigned int get_estimated_runtime(struct proc *p) {
+    return p->p_priority;
+}
+
 void proc_init(void)
 {
 	struct proc * rp;
