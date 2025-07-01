@@ -39,6 +39,7 @@ static unsigned balance_timeout;
 
 static int schedule_process(struct schedproc * rmp, unsigned flags);
 
+
 #define SCHEDULE_CHANGE_PRIO	0x1
 #define SCHEDULE_CHANGE_QUANTUM	0x2
 #define SCHEDULE_CHANGE_CPU	0x4
@@ -318,35 +319,49 @@ int do_nice(message *m_ptr)
  *===========================================================================*/
 static int schedule_process(struct schedproc * rmp, unsigned flags)
 {
-	int err;
-	int new_prio, new_quantum, new_cpu, niced;
+    struct schedproc *selected = rmp;
 
-	pick_cpu(rmp);
+    /* --- INÍCIO DA MODIFICAÇÃO SJF --- */
+    /* Ativa SJF apenas para decisões locais (mudança de prioridade + quantum) */
+    if (flags == (SCHEDULE_CHANGE_PRIO | SCHEDULE_CHANGE_QUANTUM)) {
+        struct schedproc *shortest = select_shortest_job();
+        if (shortest != NULL) {
+            selected = shortest;
+            /* Restaura quantum padrão para o processo selecionado */
+            selected->time_slice = DEFAULT_USER_TIME_SLICE;
+        }
+    }
+    /* --- FIM DA MODIFICAÇÃO SJF --- */
 
-	if (flags & SCHEDULE_CHANGE_PRIO)
-		new_prio = rmp->priority;
-	else
-		new_prio = -1;
+    int err;
+    int new_prio, new_quantum, new_cpu, niced;
 
-	if (flags & SCHEDULE_CHANGE_QUANTUM)
-		new_quantum = rmp->time_slice;
-	else
-		new_quantum = -1;
+    /* Usar 'selected' em vez de 'rmp' para compatibilidade com SJF */
+    pick_cpu(selected);
 
-	if (flags & SCHEDULE_CHANGE_CPU)
-		new_cpu = rmp->cpu;
-	else
-		new_cpu = -1;
+    if (flags & SCHEDULE_CHANGE_PRIO)
+        new_prio = selected->priority;
+    else
+        new_prio = -1;
 
-	niced = (rmp->max_priority > USER_Q);
+    if (flags & SCHEDULE_CHANGE_QUANTUM)
+        new_quantum = selected->time_slice;
+    else
+        new_quantum = -1;
 
-	if ((err = sys_schedule(rmp->endpoint, new_prio,
-		new_quantum, new_cpu, niced)) != OK) {
-		printf("PM: An error occurred when trying to schedule %d: %d\n",
-		rmp->endpoint, err);
-	}
+    if (flags & SCHEDULE_CHANGE_CPU)
+        new_cpu = selected->cpu;
+    else
+        new_cpu = -1;
 
-	return err;
+    niced = (selected->max_priority > USER_Q);
+
+    if ((err = sys_schedule(selected->endpoint, new_prio,
+        new_quantum, new_cpu, niced)) != OK) {
+        printf("PM: Error scheduling %d: %d\n", selected->endpoint, err);
+    }
+
+    return err;
 }
 
 
