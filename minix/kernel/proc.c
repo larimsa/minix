@@ -40,6 +40,7 @@
 #include "arch_proto.h"
 
 #include <minix/syslib.h>
+#include <minix/com.h>
 
 /* Scheduling and message passing functions */
 static void idle(void);
@@ -1604,7 +1605,7 @@ void enqueue(
  * This function can be used x-cpu as it always uses the queues of the cpu the
  * process is assigned to.
  */
-  int q = rp->p_priority;	 		/* scheduling queue to use */
+  int q = USER_Q;	 		/* scheduling queue to use */
   struct proc **rdy_head, **rdy_tail;
   
   assert(proc_is_runnable(rp));
@@ -1669,7 +1670,7 @@ void enqueue(
  */
 static void enqueue_head(struct proc *rp)
 {
-  const int q = rp->p_priority;	 		/* scheduling queue to use */
+  const int q = USER_Q;	 		/* scheduling queue to use */
 
   struct proc **rdy_head, **rdy_tail;
 
@@ -1723,7 +1724,7 @@ void dequeue(struct proc *rp)
  * This function can operate x-cpu as it always removes the process from the
  * queue of the cpu the process is currently assigned to.
  */
-  int q = rp->p_priority;		/* queue to use */
+  int q = USER_Q;		/* queue to use */
   struct proc **xpp;			/* iterate over queue */
   struct proc *prev_xp;
   u64_t tsc, tsc_delta;
@@ -1799,17 +1800,15 @@ static struct proc * pick_proc(void)
    * If there are no processes ready to run, return NULL.
    */
   rdy_head = get_cpulocal_var(run_q_head);
-  for (q=0; q < NR_SCHED_QUEUES; q++) {	
-	if(!(rp = rdy_head[q])) {
-		TRACE(VF_PICKPROC, printf("cpu %d queue %d empty\n", cpuid, q););
-		continue;
-	}
-	assert(proc_is_runnable(rp));
-	if (priv(rp)->s_flags & BILLABLE)	 	
-		get_cpulocal_var(bill_ptr) = rp; /* bill for system time */
-	return rp;
+  q = USER_Q;	
+  if(!(rp = rdy_head[q])) {
+	TRACE(VF_PICKPROC, printf("cpu %d queue %d empty\n", cpuid, q););
+		return NULL;
   }
-  return NULL;
+  assert(proc_is_runnable(rp));
+  if (priv(rp)->s_flags & BILLABLE)	 	
+	get_cpulocal_var(bill_ptr) = rp; /* bill for system time */
+   	return rp;
 }
 
 /*===========================================================================*

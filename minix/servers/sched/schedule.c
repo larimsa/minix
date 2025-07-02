@@ -16,7 +16,7 @@
 static unsigned balance_timeout;
 
 #define BALANCE_TIMEOUT	5 /* how often to balance queues in seconds */
-
+#define RR_QUANTUM 50 /* mudanca feita para quantum do round robin  */
 static int schedule_process(struct schedproc * rmp, unsigned flags);
 
 #define SCHEDULE_CHANGE_PRIO	0x1
@@ -96,9 +96,8 @@ int do_noquantum(message *m_ptr)
 	}
 
 	rmp = &schedproc[proc_nr_n];
-	if (rmp->priority < MIN_USER_Q) {
-		rmp->priority += 1; /* lower priority */
-	}
+	
+	/* decremento de prioridade removido para rr */
 
 	if ((rv = schedule_process_local(rmp)) != OK) {
 		return rv;
@@ -172,7 +171,7 @@ int do_start_scheduling(message *m_ptr)
 		/* We have a special case here for init, which is the first
 		   process scheduled, and the parent of itself. */
 		rmp->priority   = USER_Q;
-		rmp->time_slice = DEFAULT_USER_TIME_SLICE;
+		rmp->time_slice = RR_QUANTUM;
 
 		/*
 		 * Since kernel never changes the cpu of a process, all are
@@ -279,7 +278,7 @@ int do_nice(message *m_ptr)
 	old_max_q = rmp->max_priority;
 
 	/* Update the proc entry and reschedule the process */
-	rmp->max_priority = rmp->priority = new_q;
+	rmp->max_priority = rmp->priority = USER_Q;
 
 	if ((rv = schedule_process_local(rmp)) != OK) {
 		/* Something went wrong when rescheduling the process, roll
@@ -352,18 +351,6 @@ void init_scheduling(void)
  */
 void balance_queues(void)
 {
-	struct schedproc *rmp;
-	int r, proc_nr;
-
-	for (proc_nr=0, rmp=schedproc; proc_nr < NR_PROCS; proc_nr++, rmp++) {
-		if (rmp->flags & IN_USE) {
-			if (rmp->priority > rmp->max_priority) {
-				rmp->priority -= 1; /* increase priority */
-				schedule_process_local(rmp);
-			}
-		}
-	}
-
-	if ((r = sys_setalarm(balance_timeout, 0)) != OK)
-		panic("sys_setalarm failed: %d", r);
+	return; /* modificado para impedir aging que nao ocorre no 
+		round robin */
 }
